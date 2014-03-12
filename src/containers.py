@@ -1,4 +1,7 @@
 from pprint import pformat, pprint
+from copy import copy
+
+import midi
 
 class Pattern(list):
     def __init__(self, tracks=[], resolution=220, format=1):
@@ -58,3 +61,37 @@ class Track(list):
 
     def __repr__(self):
         return "midi.Track(\\\n  %s)" % (pformat(list(self)).replace('\n', '\n  '), )
+
+    def align_to_note(self, track, note_pos, self_pos=0):
+        note_pos -= 1
+        note_pos *= 2 #double the value to account for off events
+        note_pos_tick = track[note_pos].tick
+        tick_diff = self[self_pos].tick - note_pos_tick
+        for num, event in enumerate(self):
+            event.tick -= tick_diff
+                    
+    def transpose(self, interval):
+        new_track = Track()
+        for num, event in enumerate(self):
+            etype = type(event).__name__
+            if etype == 'EndOfTrackEvent':
+                eot = midi.EndOfTrackEvent(tick=1)
+                new_track.append(eot)
+                continue
+            else:
+                EventObj = getattr(midi, etype)
+            new_event = EventObj(channel=event.channel,
+                                 tick=event.tick,
+                                 data=copy(event.data))
+            new_track.append(new_event)
+            data = new_track[num].data
+            if not data:
+                continue
+            pitch, velocity = data
+            pitch += interval
+            if pitch not in range(0, 144):
+                raise Exception('Transposition results in notes out of range.')
+            else:
+                data[0] = pitch
+        return new_track
+
